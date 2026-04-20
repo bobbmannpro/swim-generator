@@ -122,58 +122,67 @@ WORKOUT FORMAT RULES — CRITICAL:
 - Always include total yardage at the end`;
 
 const DEFAULT_SWIMMERS = [
-  {
-    id: "michael-anton",
-    name: "Michael Anton",
-    systemPrompt: MICHAEL_DEFAULT_PROFILE,
-  },
+  { id: "michael-anton", name: "Michael Anton", systemPrompt: MICHAEL_DEFAULT_PROFILE },
 ];
 
 const WORKOUT_TYPES = [
-  "Sprints",
-  "Send-offs",
-  "Endurance / Long Sets",
-  "Heavy Pull",
-  "Heavy Kick",
-  "Drill Focused",
-  "Pyramid",
-  "Confidence Builder",
-  "Mixed / Everything",
+  "Sprints", "Send-offs", "Endurance / Long Sets", "Heavy Pull",
+  "Heavy Kick", "Drill Focused", "Pyramid", "Confidence Builder", "Mixed / Everything",
 ];
 
 const YARDAGE_OPTIONS = [1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000];
 
 const TOOL_OPTIONS = [
-  "Pull buoy",
-  "Small paddles",
-  "Large paddles",
-  "Fins",
-  "Kickboard",
-  "Snorkel (main set only)",
-  "No tools",
+  "Pull buoy", "Small paddles", "Large paddles", "Fins", "Kickboard",
+  "Snorkel (main set only)", "No tools",
 ];
 
-const STROKE_OPTIONS = [
-  "Freestyle only",
-  "Include butterfly (25s only)",
-  "Include backstroke",
-  "Include butterfly and backstroke",
-];
+const ALL_STROKES = ["Freestyle", "Backstroke", "Butterfly", "Breaststroke", "IM"];
 
-const DRILL_OPTIONS = [
-  "Catch-up drill",
-  "Single arm (R, L, R, L)",
-  "Fingertip drag",
-  "High elbow catch",
-  "Fist drill",
-  "Sculling",
-  "3-stroke / rotate drill",
-  "Side kick balance",
-  "Underwater dolphin kicks",
-  "Streamline back kicks",
-  "Tarzan drill",
-  "No drills",
-];
+const DRILLS_BY_STROKE = {
+  Freestyle: [
+    "Catch-up",
+    "Single arm (R, L, R, L)",
+    "Fingertip drag",
+    "High elbow catch",
+    "Fist drill",
+    "Sculling",
+    "3-stroke rotate",
+    "Tarzan drill",
+    "Side kick balance",
+    "Streamline kicks",
+  ],
+  Backstroke: [
+    "Single arm backstroke",
+    "Fingertip drag backstroke",
+    "Catch-up backstroke",
+    "Side rotation",
+    "Streamline back kicks",
+    "Double arm backstroke",
+  ],
+  Butterfly: [
+    "Single arm butterfly",
+    "2-kick butterfly",
+    "Butterfly arms / freestyle kick",
+    "Underwater dolphin kicks",
+    "Body wave",
+    "3-right 3-left butterfly",
+  ],
+  Breaststroke: [
+    "Pull-out drill",
+    "2-kick 1-pull",
+    "Glide drill",
+    "Kick-only with board",
+    "Breaststroke arms / flutter kick",
+    "Heads-up breaststroke",
+  ],
+  IM: [
+    "IM order drill",
+    "Stroke transition focus",
+    "One-length-each stroke",
+    "Reverse IM",
+  ],
+};
 
 function loadSwimmers() {
   try {
@@ -185,19 +194,18 @@ function loadSwimmers() {
 
 export default function App() {
   const [swimmers, setSwimmers] = useState(loadSwimmers);
-  const [selectedSwimmerId, setSelectedSwimmerId] = useState(
-    () => loadSwimmers()[0]?.id
-  );
+  const [selectedSwimmerId, setSelectedSwimmerId] = useState(() => loadSwimmers()[0]?.id);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [showEditForm, setShowEditForm] = useState(false);
   const [newName, setNewName] = useState("");
   const [newProfile, setNewProfile] = useState(PROFILE_TEMPLATE);
 
   const [selectedTypes, setSelectedTypes] = useState([]);
   const [yardage, setYardage] = useState(3000);
   const [tools, setTools] = useState([]);
-  const [strokes, setStrokes] = useState("Freestyle only");
-  const [drills, setDrills] = useState([]);
+  const [selectedStrokes, setSelectedStrokes] = useState(["Freestyle"]);
+  const [drillsByStroke, setDrillsByStroke] = useState({});
+  const [customSets, setCustomSets] = useState([]);
+  const [newSetInput, setNewSetInput] = useState("");
   const [notes, setNotes] = useState("");
   const [workout, setWorkout] = useState("");
   const [loading, setLoading] = useState(false);
@@ -208,14 +216,12 @@ export default function App() {
     localStorage.setItem("swim-generator-swimmers", JSON.stringify(swimmers));
   }, [swimmers]);
 
-  const selectedSwimmer =
-    swimmers.find((s) => s.id === selectedSwimmerId) || swimmers[0];
+  const selectedSwimmer = swimmers.find((s) => s.id === selectedSwimmerId) || swimmers[0];
 
   const addSwimmer = () => {
     if (!newName.trim() || !newProfile.trim()) return;
     const id = newName.toLowerCase().replace(/\s+/g, "-") + "-" + Date.now();
-    const swimmer = { id, name: newName.trim(), systemPrompt: newProfile.trim() };
-    setSwimmers((prev) => [...prev, swimmer]);
+    setSwimmers((prev) => [...prev, { id, name: newName.trim(), systemPrompt: newProfile.trim() }]);
     setSelectedSwimmerId(id);
     setNewName("");
     setNewProfile(PROFILE_TEMPLATE);
@@ -227,66 +233,78 @@ export default function App() {
     if (swimmers.length <= 1) return;
     const remaining = swimmers.filter((s) => s.id !== id);
     setSwimmers(remaining);
-    if (selectedSwimmerId === id) {
-      setSelectedSwimmerId(remaining[0].id);
-      setWorkout("");
-    }
+    if (selectedSwimmerId === id) { setSelectedSwimmerId(remaining[0].id); setWorkout(""); }
   };
 
   const toggleType = (type) =>
-    setSelectedTypes((prev) =>
-      prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
-    );
+    setSelectedTypes((prev) => prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]);
 
   const toggleTool = (tool) => {
-    if (tool === "No tools") {
-      setTools(["No tools"]);
-      return;
-    }
+    if (tool === "No tools") { setTools(["No tools"]); return; }
     setTools((prev) => {
-      const filtered = prev.filter((t) => t !== "No tools");
-      return filtered.includes(tool)
-        ? filtered.filter((t) => t !== tool)
-        : [...filtered, tool];
+      const f = prev.filter((t) => t !== "No tools");
+      return f.includes(tool) ? f.filter((t) => t !== tool) : [...f, tool];
     });
   };
 
-  const toggleDrill = (drill) => {
-    if (drill === "No drills") {
-      setDrills(["No drills"]);
-      return;
-    }
-    setDrills((prev) => {
-      const filtered = prev.filter((d) => d !== "No drills");
-      return filtered.includes(drill)
-        ? filtered.filter((d) => d !== drill)
-        : [...filtered, drill];
+  const toggleStroke = (stroke) => {
+    setSelectedStrokes((prev) => {
+      if (prev.includes(stroke)) {
+        if (prev.length === 1) return prev;
+        const next = prev.filter((s) => s !== stroke);
+        setDrillsByStroke((d) => { const copy = { ...d }; delete copy[stroke]; return copy; });
+        return next;
+      }
+      return [...prev, stroke];
     });
   };
+
+  const toggleDrillForStroke = (stroke, drill) => {
+    setDrillsByStroke((prev) => {
+      const current = prev[stroke] || [];
+      const next = current.includes(drill) ? current.filter((d) => d !== drill) : [...current, drill];
+      return { ...prev, [stroke]: next };
+    });
+  };
+
+  const addCustomSet = () => {
+    if (!newSetInput.trim()) return;
+    setCustomSets((prev) => [...prev, { id: Date.now(), text: newSetInput.trim() }]);
+    setNewSetInput("");
+  };
+
+  const removeCustomSet = (id) => setCustomSets((prev) => prev.filter((s) => s.id !== id));
 
   const generateWorkout = async () => {
-    if (selectedTypes.length === 0) {
-      setError("Please select at least one workout type.");
-      return;
-    }
+    if (selectedTypes.length === 0) { setError("Please select at least one workout type."); return; }
     setError("");
     setLoading(true);
     setWorkout("");
 
     const toolsList = tools.length > 0 ? tools.join(", ") : "Coach's choice";
     const typesList = selectedTypes.join(" + ");
-    const drillsList =
-      drills.length > 0 && !drills.includes("No drills")
-        ? drills.join(", ")
-        : "Coach's choice";
+
+    const drillLines = selectedStrokes
+      .map((stroke) => {
+        const selected = drillsByStroke[stroke];
+        if (!selected || selected.length === 0) return `${stroke}: coach's choice`;
+        return `${stroke}: ${selected.join(", ")}`;
+      })
+      .join("\n");
+
+    const customSetLines = customSets.length > 0
+      ? `\nREQUIRED SETS — include these exactly in the main set:\n${customSets.map((s) => `- ${s.text}`).join("\n")}`
+      : "";
 
     const prompt = `Generate a ${yardage}-yard swim workout for ${selectedSwimmer.name} with the following parameters:
 
 Workout Type: ${typesList}
 Yardage: ${yardage}y
 Tools to use: ${toolsList}
-Strokes: ${strokes}
-Drills to include: ${drillsList}
+Strokes to include: ${selectedStrokes.join(", ")}
+Drills per stroke:
+${drillLines}
+${customSetLines}
 Additional notes: ${notes || "None"}
 
 Return ONLY the workout in the exact format specified. No preamble, no explanation, no coaching notes after. Just the workout itself starting with Warm-Up and ending with Total: ${yardage}y.
@@ -299,15 +317,13 @@ Make sure send-offs are based on the swimmer's actual performance data. Make sur
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
+          max_tokens: 1200,
           system: selectedSwimmer.systemPrompt,
           messages: [{ role: "user", content: prompt }],
         }),
       });
-
       const data = await response.json();
-      const text = data.content?.map((c) => c.text || "").join("") || "";
-      setWorkout(text);
+      setWorkout(data.content?.map((c) => c.text || "").join("") || "");
     } catch (_) {
       setError("Something went wrong generating the workout. Please try again.");
     }
@@ -316,13 +332,8 @@ Make sure send-offs are based on the swimmer's actual performance data. Make sur
 
   const copyToClipboard = () => {
     if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(workout).then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      }).catch(fallbackCopy);
-    } else {
-      fallbackCopy();
-    }
+      navigator.clipboard.writeText(workout).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }).catch(fallbackCopy);
+    } else { fallbackCopy(); }
   };
 
   const fallbackCopy = () => {
@@ -330,37 +341,29 @@ Make sure send-offs are based on the swimmer's actual performance data. Make sur
     el.value = workout;
     el.style.cssText = "position:fixed;opacity:0";
     document.body.appendChild(el);
-    el.focus();
-    el.select();
-    try {
-      document.execCommand("copy");
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (_) {
-      alert("Copy failed. Please select the text manually.");
-    }
+    el.focus(); el.select();
+    try { document.execCommand("copy"); setCopied(true); setTimeout(() => setCopied(false), 2000); }
+    catch (_) { alert("Copy failed. Please select the text manually."); }
     document.body.removeChild(el);
   };
 
   const chip = (active) => ({
-    padding: "8px 14px",
-    borderRadius: 20,
-    border: "2px solid",
+    padding: "8px 14px", borderRadius: 20, border: "2px solid",
     borderColor: active ? "#1a3a5c" : "#ddd",
     backgroundColor: active ? "#1a3a5c" : "white",
     color: active ? "white" : "#333",
-    cursor: "pointer",
-    fontSize: 13,
-    fontWeight: active ? "bold" : "normal",
+    cursor: "pointer", fontSize: 13, fontWeight: active ? "bold" : "normal",
   });
 
-  const card = {
-    backgroundColor: "white",
-    borderRadius: 10,
-    padding: 20,
-    marginBottom: 16,
-    boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
-  };
+  const smallChip = (active) => ({
+    padding: "5px 11px", borderRadius: 16, border: "1px solid",
+    borderColor: active ? "#1a3a5c" : "#ccc",
+    backgroundColor: active ? "#e8f0f8" : "white",
+    color: active ? "#1a3a5c" : "#555",
+    cursor: "pointer", fontSize: 12, fontWeight: active ? "bold" : "normal",
+  });
+
+  const card = { backgroundColor: "white", borderRadius: 10, padding: 20, marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.08)" };
 
   return (
     <div style={{ fontFamily: "sans-serif", maxWidth: 640, margin: "0 auto", padding: 20, backgroundColor: "#f8f9fa", minHeight: "100vh" }}>
@@ -377,28 +380,16 @@ Make sure send-offs are based on the swimmer's actual performance data. Make sur
         <div style={{ fontWeight: "bold", color: "#1a3a5c", marginBottom: 10 }}>Swimmer</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
           {swimmers.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => { setSelectedSwimmerId(s.id); setWorkout(""); }}
-              style={chip(selectedSwimmerId === s.id)}
-            >
+            <button key={s.id} onClick={() => { setSelectedSwimmerId(s.id); setWorkout(""); }} style={chip(selectedSwimmerId === s.id)}>
               {selectedSwimmerId === s.id ? "✓ " : ""}{s.name}
             </button>
           ))}
-          <button
-            onClick={() => { setShowAddForm(true); setShowEditForm(false); }}
-            style={{ padding: "8px 14px", borderRadius: 20, border: "2px dashed #1a3a5c", backgroundColor: "white", color: "#1a3a5c", cursor: "pointer", fontSize: 13 }}
-          >
+          <button onClick={() => setShowAddForm(true)} style={{ padding: "8px 14px", borderRadius: 20, border: "2px dashed #1a3a5c", backgroundColor: "white", color: "#1a3a5c", cursor: "pointer", fontSize: 13 }}>
             + Add Swimmer
           </button>
         </div>
-
-        {/* Delete button for non-default swimmers */}
         {selectedSwimmer?.id !== "michael-anton" && (
-          <button
-            onClick={() => deleteSwimmer(selectedSwimmer.id)}
-            style={{ fontSize: 12, color: "#cc0000", background: "none", border: "none", cursor: "pointer", padding: 0 }}
-          >
+          <button onClick={() => deleteSwimmer(selectedSwimmer.id)} style={{ fontSize: 12, color: "#cc0000", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
             Remove {selectedSwimmer?.name}
           </button>
         )}
@@ -409,32 +400,22 @@ Make sure send-offs are based on the swimmer's actual performance data. Make sur
         <div style={{ ...card, border: "2px solid #1a3a5c" }}>
           <div style={{ fontWeight: "bold", color: "#1a3a5c", marginBottom: 12, fontSize: 15 }}>New Swimmer Profile</div>
           <input
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
+            value={newName} onChange={(e) => setNewName(e.target.value)}
             placeholder="Swimmer name (e.g. Jane Smith)"
-            style={{ width: "100%", padding: "10px", borderRadius: 8, border: "1px solid #ddd", fontSize: 13, marginBottom: 10, boxSizing: "border-box" }}
+            style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #ddd", fontSize: 13, marginBottom: 10, boxSizing: "border-box" }}
           />
-          <div style={{ fontSize: 12, color: "#555", marginBottom: 6 }}>
-            Paste or fill in the profile below. Replace all [bracketed] fields with real data.
-          </div>
+          <div style={{ fontSize: 12, color: "#555", marginBottom: 6 }}>Fill in the profile below — replace all [bracketed] fields with real data.</div>
           <textarea
-            value={newProfile}
-            onChange={(e) => setNewProfile(e.target.value)}
-            rows={18}
+            value={newProfile} onChange={(e) => setNewProfile(e.target.value)} rows={18}
             style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #ddd", fontSize: 12, fontFamily: "monospace", resize: "vertical", boxSizing: "border-box" }}
           />
           <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
-            <button
-              onClick={addSwimmer}
-              disabled={!newName.trim() || !newProfile.trim()}
-              style={{ flex: 1, padding: "10px", backgroundColor: "#1a3a5c", color: "white", border: "none", borderRadius: 8, fontSize: 14, cursor: "pointer", fontWeight: "bold" }}
-            >
+            <button onClick={addSwimmer} disabled={!newName.trim() || !newProfile.trim()}
+              style={{ flex: 1, padding: 10, backgroundColor: "#1a3a5c", color: "white", border: "none", borderRadius: 8, fontSize: 14, cursor: "pointer", fontWeight: "bold" }}>
               Save Swimmer
             </button>
-            <button
-              onClick={() => { setShowAddForm(false); setNewName(""); setNewProfile(PROFILE_TEMPLATE); }}
-              style={{ padding: "10px 16px", backgroundColor: "#eee", color: "#333", border: "none", borderRadius: 8, fontSize: 14, cursor: "pointer" }}
-            >
+            <button onClick={() => { setShowAddForm(false); setNewName(""); setNewProfile(PROFILE_TEMPLATE); }}
+              style={{ padding: "10px 16px", backgroundColor: "#eee", color: "#333", border: "none", borderRadius: 8, fontSize: 14, cursor: "pointer" }}>
               Cancel
             </button>
           </div>
@@ -453,20 +434,15 @@ Make sure send-offs are based on the swimmer's actual performance data. Make sur
           ))}
         </div>
         {selectedTypes.length > 0 && (
-          <div style={{ marginTop: 10, fontSize: 12, color: "#1a3a5c", fontStyle: "italic" }}>
-            Selected: {selectedTypes.join(" + ")}
-          </div>
+          <div style={{ marginTop: 10, fontSize: 12, color: "#1a3a5c", fontStyle: "italic" }}>Selected: {selectedTypes.join(" + ")}</div>
         )}
       </div>
 
       {/* Yardage */}
       <div style={card}>
         <div style={{ fontWeight: "bold", marginBottom: 10, color: "#1a3a5c" }}>Yardage: {yardage}y</div>
-        <input
-          type="range" min={1500} max={5000} step={500} value={yardage}
-          onChange={(e) => setYardage(Number(e.target.value))}
-          style={{ width: "100%", accentColor: "#1a3a5c" }}
-        />
+        <input type="range" min={1500} max={5000} step={500} value={yardage}
+          onChange={(e) => setYardage(Number(e.target.value))} style={{ width: "100%", accentColor: "#1a3a5c" }} />
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#888", marginTop: 4 }}>
           <span>1500</span><span>5000</span>
         </div>
@@ -476,11 +452,8 @@ Make sure send-offs are based on the swimmer's actual performance data. Make sur
               padding: "5px 12px", borderRadius: 15, border: "1px solid",
               borderColor: yardage === y ? "#1a3a5c" : "#ddd",
               backgroundColor: yardage === y ? "#1a3a5c" : "white",
-              color: yardage === y ? "white" : "#555",
-              cursor: "pointer", fontSize: 12,
-            }}>
-              {y}y
-            </button>
+              color: yardage === y ? "white" : "#555", cursor: "pointer", fontSize: 12,
+            }}>{y}y</button>
           ))}
         </div>
       </div>
@@ -490,35 +463,71 @@ Make sure send-offs are based on the swimmer's actual performance data. Make sur
         <div style={{ fontWeight: "bold", marginBottom: 10, color: "#1a3a5c" }}>Tools</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
           {TOOL_OPTIONS.map((tool) => (
-            <button key={tool} onClick={() => toggleTool(tool)} style={chip(tools.includes(tool))}>
-              {tool}
-            </button>
+            <button key={tool} onClick={() => toggleTool(tool)} style={chip(tools.includes(tool))}>{tool}</button>
           ))}
         </div>
       </div>
 
-      {/* Drills */}
+      {/* Strokes + Drills per stroke */}
       <div style={card}>
-        <div style={{ fontWeight: "bold", marginBottom: 4, color: "#1a3a5c" }}>Drills</div>
-        <div style={{ fontSize: 12, color: "#888", marginBottom: 10 }}>Pick drills to include or leave blank for coach's choice</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {DRILL_OPTIONS.map((drill) => (
-            <button key={drill} onClick={() => toggleDrill(drill)} style={chip(drills.includes(drill))}>
-              {drill}
+        <div style={{ fontWeight: "bold", color: "#1a3a5c", marginBottom: 4 }}>Strokes</div>
+        <div style={{ fontSize: 12, color: "#888", marginBottom: 10 }}>Select strokes — then pick drills for each</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+          {ALL_STROKES.map((stroke) => (
+            <button key={stroke} onClick={() => toggleStroke(stroke)} style={chip(selectedStrokes.includes(stroke))}>
+              {selectedStrokes.includes(stroke) ? "✓ " : ""}{stroke}
             </button>
           ))}
         </div>
+
+        {selectedStrokes.map((stroke) => (
+          <div key={stroke} style={{ marginBottom: 16, paddingTop: 14, borderTop: "1px solid #eee" }}>
+            <div style={{ fontSize: 13, fontWeight: "bold", color: "#1a3a5c", marginBottom: 8 }}>
+              {stroke} Drills
+              <span style={{ fontSize: 11, fontWeight: "normal", color: "#888", marginLeft: 8 }}>
+                {(drillsByStroke[stroke]?.length || 0) === 0 ? "coach's choice" : drillsByStroke[stroke].join(", ")}
+              </span>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {DRILLS_BY_STROKE[stroke].map((drill) => (
+                <button key={drill} onClick={() => toggleDrillForStroke(stroke, drill)}
+                  style={smallChip((drillsByStroke[stroke] || []).includes(drill))}>
+                  {(drillsByStroke[stroke] || []).includes(drill) ? "✓ " : ""}{drill}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
 
-      {/* Strokes */}
+      {/* Custom Sets */}
       <div style={card}>
-        <div style={{ fontWeight: "bold", marginBottom: 10, color: "#1a3a5c" }}>Strokes</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {STROKE_OPTIONS.map((s) => (
-            <button key={s} onClick={() => setStrokes(s)} style={chip(strokes === s)}>
-              {s}
-            </button>
-          ))}
+        <div style={{ fontWeight: "bold", color: "#1a3a5c", marginBottom: 4 }}>Custom Sets</div>
+        <div style={{ fontSize: 12, color: "#888", marginBottom: 12 }}>Add specific sets you want included in the workout</div>
+
+        {customSets.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            {customSets.map((s) => (
+              <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, backgroundColor: "#f0f4f8", borderRadius: 8, padding: "8px 12px" }}>
+                <div style={{ flex: 1, fontSize: 13, color: "#222", fontFamily: "monospace" }}>{s.text}</div>
+                <button onClick={() => removeCustomSet(s.id)} style={{ background: "none", border: "none", color: "#cc0000", cursor: "pointer", fontSize: 16, lineHeight: 1, padding: 0 }}>×</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 8 }}>
+          <input
+            value={newSetInput}
+            onChange={(e) => setNewSetInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && addCustomSet()}
+            placeholder='e.g. "8x50 on 1:00 all out" or "1x500 negative split"'
+            style={{ flex: 1, padding: "9px 12px", borderRadius: 8, border: "1px solid #ddd", fontSize: 13, boxSizing: "border-box" }}
+          />
+          <button onClick={addCustomSet} disabled={!newSetInput.trim()}
+            style={{ padding: "9px 16px", backgroundColor: newSetInput.trim() ? "#1a3a5c" : "#ccc", color: "white", border: "none", borderRadius: 8, cursor: newSetInput.trim() ? "pointer" : "not-allowed", fontSize: 13, fontWeight: "bold", whiteSpace: "nowrap" }}>
+            + Add
+          </button>
         </div>
       </div>
 
@@ -526,30 +535,21 @@ Make sure send-offs are based on the swimmer's actual performance data. Make sur
       <div style={card}>
         <div style={{ fontWeight: "bold", marginBottom: 8, color: "#1a3a5c" }}>Additional Notes (optional)</div>
         <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
+          value={notes} onChange={(e) => setNotes(e.target.value)}
           placeholder="e.g. taper day, confidence focus, time trial prep, no large paddles..."
           style={{ width: "100%", minHeight: 70, padding: 10, borderRadius: 8, border: "1px solid #ddd", fontSize: 13, resize: "vertical", boxSizing: "border-box" }}
         />
       </div>
 
       {error && (
-        <div style={{ backgroundColor: "#fff3f3", border: "1px solid #ffcccc", borderRadius: 8, padding: 12, marginBottom: 12, color: "#cc0000", fontSize: 13 }}>
-          {error}
-        </div>
+        <div style={{ backgroundColor: "#fff3f3", border: "1px solid #ffcccc", borderRadius: 8, padding: 12, marginBottom: 12, color: "#cc0000", fontSize: 13 }}>{error}</div>
       )}
 
-      <button
-        onClick={generateWorkout}
-        disabled={loading}
-        style={{
-          width: "100%", padding: "14px",
-          backgroundColor: loading ? "#aaa" : "#1a3a5c",
-          color: "white", border: "none", borderRadius: 10,
-          fontSize: 16, fontWeight: "bold",
-          cursor: loading ? "not-allowed" : "pointer", marginBottom: 20,
-        }}
-      >
+      <button onClick={generateWorkout} disabled={loading} style={{
+        width: "100%", padding: 14, backgroundColor: loading ? "#aaa" : "#1a3a5c",
+        color: "white", border: "none", borderRadius: 10, fontSize: 16, fontWeight: "bold",
+        cursor: loading ? "not-allowed" : "pointer", marginBottom: 20,
+      }}>
         {loading ? `Generating ${selectedSwimmer?.name}'s Workout...` : `Generate ${selectedSwimmer?.name}'s Workout`}
       </button>
 
@@ -557,15 +557,10 @@ Make sure send-offs are based on the swimmer's actual performance data. Make sur
         <div style={card}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
             <div style={{ fontWeight: "bold", color: "#1a3a5c", fontSize: 15 }}>{selectedSwimmer?.name}'s Workout</div>
-            <button
-              onClick={copyToClipboard}
-              style={{
-                padding: "7px 14px",
-                backgroundColor: copied ? "#2e7d32" : "#1a3a5c",
-                color: "white", border: "none", borderRadius: 8,
-                cursor: "pointer", fontSize: 13,
-              }}
-            >
+            <button onClick={copyToClipboard} style={{
+              padding: "7px 14px", backgroundColor: copied ? "#2e7d32" : "#1a3a5c",
+              color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13,
+            }}>
               {copied ? "Copied!" : "Copy for TrainingPeaks"}
             </button>
           </div>
