@@ -193,7 +193,7 @@ function loadSwimmers() {
 }
 
 function loadApiKey() {
-  try { return localStorage.getItem("swim-generator-api-key") || ""; } catch (_) { return ""; }
+  try { return localStorage.getItem("swim-generator-gemini-key") || ""; } catch (_) { return ""; }
 }
 
 export default function App() {
@@ -283,7 +283,7 @@ export default function App() {
 
   const saveApiKey = (key) => {
     setApiKey(key);
-    try { localStorage.setItem("swim-generator-api-key", key); } catch (_) {}
+    try { localStorage.setItem("swim-generator-gemini-key", key); } catch (_) {}
   };
 
   const generateWorkout = async () => {
@@ -324,25 +324,24 @@ Return ONLY the workout in the exact format specified. No preamble, no explanati
 Make sure send-offs are based on the swimmer's actual performance data. Make sure the yardage adds up exactly to ${yardage}.`;
 
     try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey.trim(),
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1200,
-          system: selectedSwimmer.systemPrompt,
-          messages: [{ role: "user", content: prompt }],
-        }),
-      });
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey.trim()}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: selectedSwimmer.systemPrompt }] },
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { maxOutputTokens: 1200, temperature: 0.7 },
+          }),
+        }
+      );
       const data = await response.json();
-      setWorkout(data.content?.map((c) => c.text || "").join("") || "");
-    } catch (_) {
-      setError("Something went wrong generating the workout. Please try again.");
+      if (data.error) throw new Error(data.error.message);
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      setWorkout(text);
+    } catch (err) {
+      setError(err.message?.includes("API_KEY") ? "Invalid API key. Check your Gemini key and try again." : "Something went wrong generating the workout. Please try again.");
     }
     setLoading(false);
   };
@@ -396,7 +395,7 @@ Make sure send-offs are based on the swimmer's actual performance data. Make sur
       <div style={{ ...card, border: apiKey ? "1px solid #d0e8d0" : "2px solid #ffaaaa", backgroundColor: apiKey ? "white" : "#fff8f8" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
           <div style={{ fontWeight: "bold", color: "#1a3a5c", fontSize: 14 }}>
-            {apiKey ? "✓ API Key saved" : "Anthropic API Key required"}
+            {apiKey ? "✓ Gemini API Key saved" : "Google Gemini API Key required (free)"}
           </div>
           <button onClick={() => setShowApiKey((v) => !v)} style={{ fontSize: 12, color: "#555", background: "none", border: "none", cursor: "pointer" }}>
             {showApiKey ? "Hide" : "Show / Edit"}
@@ -408,11 +407,11 @@ Make sure send-offs are based on the swimmer's actual performance data. Make sur
               type="password"
               value={apiKey}
               onChange={(e) => saveApiKey(e.target.value)}
-              placeholder="sk-ant-..."
+              placeholder="AIza..."
               style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid #ddd", fontSize: 13, boxSizing: "border-box" }}
             />
             <div style={{ fontSize: 11, color: "#888", marginTop: 6 }}>
-              Saved to this browser only. Get your key at console.anthropic.com.
+              Free — 1,500 requests/day. Get your key at aistudio.google.com/apikey
             </div>
           </>
         )}
