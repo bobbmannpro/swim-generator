@@ -192,7 +192,13 @@ function loadSwimmers() {
   return DEFAULT_SWIMMERS;
 }
 
+function loadApiKey() {
+  try { return localStorage.getItem("swim-generator-api-key") || ""; } catch (_) { return ""; }
+}
+
 export default function App() {
+  const [apiKey, setApiKey] = useState(loadApiKey);
+  const [showApiKey, setShowApiKey] = useState(false);
   const [swimmers, setSwimmers] = useState(loadSwimmers);
   const [selectedSwimmerId, setSelectedSwimmerId] = useState(() => loadSwimmers()[0]?.id);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -275,7 +281,13 @@ export default function App() {
 
   const removeCustomSet = (id) => setCustomSets((prev) => prev.filter((s) => s.id !== id));
 
+  const saveApiKey = (key) => {
+    setApiKey(key);
+    try { localStorage.setItem("swim-generator-api-key", key); } catch (_) {}
+  };
+
   const generateWorkout = async () => {
+    if (!apiKey.trim()) { setError("Please enter your Anthropic API key above."); return; }
     if (selectedTypes.length === 0) { setError("Please select at least one workout type."); return; }
     setError("");
     setLoading(true);
@@ -314,7 +326,12 @@ Make sure send-offs are based on the swimmer's actual performance data. Make sur
     try {
       const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey.trim(),
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514",
           max_tokens: 1200,
@@ -373,6 +390,32 @@ Make sure send-offs are based on the swimmer's actual performance data. Make sur
         <div style={{ fontSize: 28 }}>🏊</div>
         <div style={{ fontSize: 22, fontWeight: "bold" }}>Swim Generator</div>
         <div style={{ fontSize: 13, opacity: 0.8, marginTop: 4 }}>AI-powered workouts built around each swimmer</div>
+      </div>
+
+      {/* API Key */}
+      <div style={{ ...card, border: apiKey ? "1px solid #d0e8d0" : "2px solid #ffaaaa", backgroundColor: apiKey ? "white" : "#fff8f8" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <div style={{ fontWeight: "bold", color: "#1a3a5c", fontSize: 14 }}>
+            {apiKey ? "✓ API Key saved" : "Anthropic API Key required"}
+          </div>
+          <button onClick={() => setShowApiKey((v) => !v)} style={{ fontSize: 12, color: "#555", background: "none", border: "none", cursor: "pointer" }}>
+            {showApiKey ? "Hide" : "Show / Edit"}
+          </button>
+        </div>
+        {(!apiKey || showApiKey) && (
+          <>
+            <input
+              type="password"
+              value={apiKey}
+              onChange={(e) => saveApiKey(e.target.value)}
+              placeholder="sk-ant-..."
+              style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid #ddd", fontSize: 13, boxSizing: "border-box" }}
+            />
+            <div style={{ fontSize: 11, color: "#888", marginTop: 6 }}>
+              Saved to this browser only. Get your key at console.anthropic.com.
+            </div>
+          </>
+        )}
       </div>
 
       {/* Swimmer Selector */}
