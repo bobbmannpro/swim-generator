@@ -192,13 +192,7 @@ function loadSwimmers() {
   return DEFAULT_SWIMMERS;
 }
 
-function loadApiKey() {
-  try { return localStorage.getItem("swim-generator-gemini-key") || ""; } catch (_) { return ""; }
-}
-
 export default function App() {
-  const [apiKey, setApiKey] = useState(loadApiKey);
-  const [showApiKey, setShowApiKey] = useState(false);
   const [swimmers, setSwimmers] = useState(loadSwimmers);
   const [selectedSwimmerId, setSelectedSwimmerId] = useState(() => loadSwimmers()[0]?.id);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -281,13 +275,7 @@ export default function App() {
 
   const removeCustomSet = (id) => setCustomSets((prev) => prev.filter((s) => s.id !== id));
 
-  const saveApiKey = (key) => {
-    setApiKey(key);
-    try { localStorage.setItem("swim-generator-gemini-key", key); } catch (_) {}
-  };
-
   const generateWorkout = async () => {
-    if (!apiKey.trim()) { setError("Please enter your Anthropic API key above."); return; }
     if (selectedTypes.length === 0) { setError("Please select at least one workout type."); return; }
     setError("");
     setLoading(true);
@@ -324,24 +312,19 @@ Return ONLY the workout in the exact format specified. No preamble, no explanati
 Make sure send-offs are based on the swimmer's actual performance data. Make sure the yardage adds up exactly to ${yardage}.`;
 
     try {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey.trim()}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: selectedSwimmer.systemPrompt }] },
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: 1200, temperature: 0.7 },
-          }),
-        }
-      );
+      const response = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          systemPrompt: selectedSwimmer.systemPrompt,
+          userPrompt: prompt,
+        }),
+      });
       const data = await response.json();
-      if (data.error) throw new Error(data.error.message);
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-      setWorkout(text);
+      if (data.error) throw new Error(data.error);
+      setWorkout(data.text || "");
     } catch (err) {
-      setError(err.message?.includes("API_KEY") ? "Invalid API key. Check your Gemini key and try again." : "Something went wrong generating the workout. Please try again.");
+      setError("Something went wrong generating the workout. Please try again.");
     }
     setLoading(false);
   };
@@ -389,32 +372,6 @@ Make sure send-offs are based on the swimmer's actual performance data. Make sur
         <div style={{ fontSize: 28 }}>🏊</div>
         <div style={{ fontSize: 22, fontWeight: "bold" }}>Swim Generator</div>
         <div style={{ fontSize: 13, opacity: 0.8, marginTop: 4 }}>AI-powered workouts built around each swimmer</div>
-      </div>
-
-      {/* API Key */}
-      <div style={{ ...card, border: apiKey ? "1px solid #d0e8d0" : "2px solid #ffaaaa", backgroundColor: apiKey ? "white" : "#fff8f8" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-          <div style={{ fontWeight: "bold", color: "#1a3a5c", fontSize: 14 }}>
-            {apiKey ? "✓ Gemini API Key saved" : "Google Gemini API Key required (free)"}
-          </div>
-          <button onClick={() => setShowApiKey((v) => !v)} style={{ fontSize: 12, color: "#555", background: "none", border: "none", cursor: "pointer" }}>
-            {showApiKey ? "Hide" : "Show / Edit"}
-          </button>
-        </div>
-        {(!apiKey || showApiKey) && (
-          <>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => saveApiKey(e.target.value)}
-              placeholder="AIza..."
-              style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid #ddd", fontSize: 13, boxSizing: "border-box" }}
-            />
-            <div style={{ fontSize: 11, color: "#888", marginTop: 6 }}>
-              Free — 1,500 requests/day. Get your key at aistudio.google.com/apikey
-            </div>
-          </>
-        )}
       </div>
 
       {/* Swimmer Selector */}
